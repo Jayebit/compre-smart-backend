@@ -53,6 +53,26 @@ db.run(`
   )
 `);
 
+// list of subjects for the questions UI
+app.get("/lessons", (req, res) => {
+  res.json({
+    firstSemester: [
+      "Understanding the Self",
+      "Readings in the Philippine History",
+      "Mathematics in the Modern World",
+      "Ethics",
+      "The Life and Works of Rizal"
+    ],
+    secondSemester: [
+      "Purposive Communication",
+      "Art Appreciation",
+      "Science, Technology and Society",
+      "The Contemporary World"
+    ]
+  });
+});
+
+
 // ---- MULTER (for uploads) ----
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
