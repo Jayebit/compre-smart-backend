@@ -270,6 +270,49 @@ app.delete("/files/:id", (req, res) => {
   });
 });
 
+// --- NEW SHARED TABLES ---
+db.run(`
+  CREATE TABLE IF NOT EXISTS questions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject TEXT,
+    text TEXT,
+    suggested TEXT,
+    createdBy TEXT,
+    createdAt TEXT
+  )
+`);
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS answers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    questionId INTEGER,
+    answerText TEXT,
+    answeredBy TEXT,
+    createdAt TEXT
+  )
+`);
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS grades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    answerId INTEGER,
+    questionId INTEGER,
+    isCorrect INTEGER,
+    feedback TEXT,
+    gradedBy TEXT,
+    createdAt TEXT
+  )
+`);
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS progress (
+    user TEXT,
+    subject TEXT,
+    value INTEGER,
+    PRIMARY KEY (user, subject)
+  )
+`);
+
 
 
 // basic root
@@ -283,5 +326,146 @@ app.listen(PORT, () => {
   console.log("Server running on port " + PORT);
 });
 
+// -------- QUESTIONS --------
+
+// list (optional ?subject=)
+app.get("/questions", (req, res) => {
+  const { subject } = req.query;
+  const sql = subject
+    ? "SELECT * FROM questions WHERE subject = ? ORDER BY createdAt DESC"
+    : "SELECT * FROM questions ORDER BY createdAt DESC";
+  db.all(sql, subject ? [subject] : [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+// create
+app.post("/questions", (req, res) => {
+  const { subject, text, suggested, createdBy } = req.body;
+  if (!subject || !text || !createdBy)
+    return res.status(400).json({ error: "Missing fields" });
+  const createdAt = new Date().toISOString();
+  db.run(
+    "INSERT INTO questions (subject, text, suggested, createdBy, createdAt) VALUES (?,?,?,?,?)",
+    [subject, text, suggested || "", createdBy, createdAt],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ id: this.lastID, subject, text, suggested: suggested || "", createdBy, createdAt });
+    }
+  );
+});
+
+// delete (also remove answers/grades for that question)
+app.delete("/questions/:id", (req, res) => {
+  const qid = req.params.id;
+  db.run("DELETE FROM questions WHERE id = ?", [qid], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    db.run("DELETE FROM answers WHERE questionId = ?", [qid]);
+    db.run("DELETE FROM grades WHERE questionId = ?", [qid]);
+    res.json({ success: true });
+  });
+});
+
+// -------- ANSWERS --------
+
+// list (optional ?questionId=)
+app.get("/answers", (req, res) => {
+  const { questionId } = req.query;
+  const sql = questionId
+    ? "SELECT * FROM answers WHERE questionId = ? ORDER BY createdAt DESC"
+    : "SELECT * FROM answers ORDER BY createdAt DESC";
+  db.all(sql, questionId ? [questionId] : [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+// create
+app.post("/answers", (req, res) => {
+  const { questionId, answerText, answeredBy } = req.body;
+  if (!questionId || !answerText || !answeredBy)
+    return res.status(400).json({ error: "Missing fields" });
+  const createdAt = new Date().toISOString();
+  db.run(
+    "INSERT INTO answers (questionId, answerText, answeredBy, createdAt) VALUES (?,?,?,?)",
+    [questionId, answerText, answeredBy, createdAt],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ id: this.lastID, questionId, answerText, answeredBy, createdAt });
+    }
+  );
+});
+
+// -------- GRADES --------
+
+// list (optional ?answerId=)
+app.get("/grades", (req, res) => {
+  const { answerId } = req.query;
+  const sql = answerId
+    ? "SELECT * FROM grades WHERE answerId = ? ORDER BY createdAt DESC"
+    : "SELECT * FROM grades ORDER BY createdAt DESC";
+  db.all(sql, answerId ? [answerId] : [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+// upsert (replace grade for an answerId)
+app.post("/grades", (req, res) => {
+  const { answerId, questionId, isCorrect, feedback, gradedBy } = req.body;
+  if (!answerId || !questionId || isCorrect == null || !gradedBy)
+    return res.status(400).json({ error: "Missing fields" });
+
+  const createdAt = new Date().toISOString();
+  db.run("DELETE FROM grades WHERE answerId = ?", [answerId], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    db.run(
+      "INSERT INTO grades (answerId, questionId, isCorrect, feedback, gradedBy, createdAt) VALUES (?,?,?,?,?,?)",
+      [answerId, questionId, isCorrect ? 1 : 0, feedback || "", gradedBy, createdAt],
+      function (err2) {
+        if (err2) return res.status(500).json({ error: err2.message });
+        res.json({
+          id: this.lastID,
+          answerId,
+          questionId,
+          isCorrect: !!isCorrect,
+          feedback: feedback || "",
+          gradedBy,
+          createdAt
+        });
+      }
+    );
+  });
+});
+
+// -------- PROGRESS --------
+
+// get all subjects' progress for a user
+app.get("/progress", (req, res) => {
+  const { user } = req.query;
+  if (!user) return res.status(400).json({ error: "Missing user" });
+  db.all("SELECT subject, value FROM progress WHERE user = ?", [user], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    const out = {};
+    rows.forEach(r => out[r.subject] = r.value);
+    res.json(out);
+  });
+});
+
+// set/update a user’s progress for one subject
+app.post("/progress", (req, res) => {
+  const { user, subject, value } = req.body;
+  if (!user || !subject || value == null)
+    return res.status(400).json({ error: "Missing fields" });
+  db.run(
+    "INSERT INTO progress (user, subject, value) VALUES (?,?,?) ON CONFLICT(user,subject) DO UPDATE SET value=excluded.value",
+    [user, subject, Number(value)],
+    (err) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ success: true });
+    }
+  );
+});
 
 
