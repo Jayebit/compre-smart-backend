@@ -702,6 +702,15 @@ app.post("/progress", (req, res) => {
   );
 });
 
+app.get("/user/:username", (req, res) => {
+  const { username } = req.params;
+  db.get("SELECT username, xp FROM users WHERE username = ?", [username], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(row || { username, xp: 0 });
+  });
+});
+
+
 
 // ======================================================
 // ROOT
