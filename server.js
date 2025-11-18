@@ -1,7 +1,9 @@
 const express = require("express");
 const cors = require("cors");
-const Database = require("better-sqlite3");
-const db = new Database("compre-smart.db");
+const sqlite3 = require("sqlite3").verbose();
+
+// FINAL & ONLY DB INSTANCE
+const db = new sqlite3.Database("./compre.db");
 
 const multer = require("multer");
 const path = require("path");
@@ -14,8 +16,9 @@ app.use(express.json());
 // Serve uploaded files
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Initialize DB
-const db = new sqlite3.Database("./compre.db");
+
+
+
 
 // Create required tables
 db.run(`
@@ -62,16 +65,19 @@ db.run(`
   )
 `);
 
-db.prepare(`
+db.run(`
   CREATE TABLE IF NOT EXISTS reflections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT,
     subject TEXT,
     content TEXT,
     mood TEXT,
-    createdAt TEXT
+    createdAt TEXT,
+    isDeleted INTEGER DEFAULT 0
   )
-`).run();
+`);
+
+
 
 
 db.run(`
@@ -427,7 +433,7 @@ app.get("/reflections", (req, res) => {
     return res.status(400).json({ error: "username required" });
 
   db.all(
-   "SELECT * FROM reflections WHERE username = ? AND isDeleted = 0 ORDER BY datetime(createdAt) DESC"
+    "SELECT * FROM reflections WHERE username = ? AND isDeleted = 0 ORDER BY datetime(createdAt) DESC",
     [username],
     (err, rows) => {
       if (err) return res.status(500).json({ error: err.message });
@@ -435,6 +441,8 @@ app.get("/reflections", (req, res) => {
     }
   );
 });
+
+
 
 // Soft delete
 app.post("/reflections/delete", (req, res) => {
