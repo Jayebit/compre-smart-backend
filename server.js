@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
-const sqlite3 = require("sqlite3").verbose();
+const Database = require("better-sqlite3");
+const db = new Database("compre-smart.db");
+
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
@@ -60,7 +62,7 @@ db.run(`
   )
 `);
 
-db.run(`
+db.prepare(`
   CREATE TABLE IF NOT EXISTS reflections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT,
@@ -69,7 +71,8 @@ db.run(`
     mood TEXT,
     createdAt TEXT
   )
-`);
+`).run();
+
 
 db.run(`
   CREATE TABLE IF NOT EXISTS questions (
