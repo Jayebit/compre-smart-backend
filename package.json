@@ -6,7 +6,10 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "postinstall": "npm rebuild sqlite3" 
+  },
+  "engines": {
+    "node": "18.x"
   },
   "keywords": [],
   "author": "",
