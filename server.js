@@ -763,6 +763,32 @@ app.post("/exp", (req, res) => {
   );
 });
 
+// Get total EXP of a user
+app.get("/exp/:user", (req, res) => {
+  const user = req.params.user;
+
+  db.get("SELECT SUM(amount) AS total FROM exp WHERE username = ?", [user],
+    (err, row) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ total: row?.total || 0 });
+    }
+  );
+});
+
+
+app.get("/exp-history/:user", (req, res) => {
+  const user = req.params.user;
+  db.all(
+    "SELECT * FROM exp WHERE username = ? ORDER BY createdAt DESC LIMIT 50",
+    [user],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
+    }
+  );
+});
+
+
 
 // ======================================================
 // ROOT
