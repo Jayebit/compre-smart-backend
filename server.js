@@ -123,6 +123,16 @@ db.run(`
   )
 `);
 
+db.run(`
+  CREATE TABLE IF NOT EXISTS exp (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT,
+    amount INTEGER,
+    createdAt TEXT
+  )
+`);
+
+
 
 // Subjects for Question Bank
 app.get("/lessons", (req, res) => {
@@ -617,31 +627,48 @@ app.post("/grades", (req, res) => {
   if (!answerId || !questionId || gradedBy == null)
     return res.status(400).json({ error: "Missing fields" });
 
-  const createdAt = new Date().toISOString();
-  const correctInt = isCorrect ? 1 : 0;
+  // 🔒 STEP 1 — Check if the question exists
+  db.get("SELECT * FROM questions WHERE id = ?", [questionId], (errQ, question) => {
+    if (errQ) return res.status(500).json({ error: errQ.message });
+    if (!question) return res.status(404).json({ error: "Question not found" });
 
-  db.run("DELETE FROM grades WHERE answerId = ?", [answerId], (errDel) => {
-    if (errDel) return res.status(500).json({ error: errDel.message });
+    // 🔥 STEP 2 — Validate if this user is the creator of the question
+    if (question.createdBy !== gradedBy) {
+      return res.status(403).json({
+        error: "Forbidden: Only the question creator can grade answers"
+      });
+    }
 
-    db.run(
-      "INSERT INTO grades (answerId, questionId, isCorrect, feedback, gradedBy, createdAt) VALUES (?,?,?,?,?,?)",
-      [answerId, questionId, correctInt, feedback || "", gradedBy, createdAt],
-      function (errIns) {
-        if (errIns) return res.status(500).json({ error: errIns.message });
+    // 🔄 STEP 3 — Proceed to delete old grade and insert new one
+    const createdAt = new Date().toISOString();
+    const correctInt = isCorrect ? 1 : 0;
 
-        res.json({
-          id: this.lastID,
-          answerId,
-          questionId,
-          isCorrect: !!correctInt,
-          feedback,
-          gradedBy,
-          createdAt,
-        });
-      }
-    );
+    db.run("DELETE FROM grades WHERE answerId = ?", [answerId], (errDel) => {
+      if (errDel) return res.status(500).json({ error: errDel.message });
+
+      db.run(
+        `INSERT INTO grades 
+         (answerId, questionId, isCorrect, feedback, gradedBy, createdAt) 
+         VALUES (?,?,?,?,?,?)`,
+        [answerId, questionId, correctInt, feedback || "", gradedBy, createdAt],
+        function (errIns) {
+          if (errIns) return res.status(500).json({ error: errIns.message });
+
+          res.json({
+            id: this.lastID,
+            answerId,
+            questionId,
+            isCorrect: !!correctInt,
+            feedback,
+            gradedBy,
+            createdAt,
+          });
+        }
+      );
+    });
   });
 });
+
 
 
 // ======================================================
@@ -721,6 +748,20 @@ app.get("/user/:username", (req, res) => {
   });
 });
 
+
+app.post("/exp", (req, res) => {
+  const { user, amount } = req.body;
+  if (!user || !amount) return res.status(400).json({ error: "Missing fields" });
+
+  db.run(
+    "INSERT INTO exp (username, amount, createdAt) VALUES (?,?,?)",
+    [user, amount, new Date().toISOString()],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ success: true });
+    }
+  );
+});
 
 
 // ======================================================
