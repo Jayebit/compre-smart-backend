@@ -213,7 +213,7 @@ app.get("/notes", (req, res) => {
   );
 });
 
-app.post("/notes", (req, res) => {
+app.post("/notes", async (req, res) => {
   const { subject, author, content, isPublic } = req.body;
   if (!subject || !author || !content)
     return res.status(400).json({ error: "Missing fields" });
@@ -223,8 +223,11 @@ app.post("/notes", (req, res) => {
   db.run(
     "INSERT INTO notes (subject, author, content, isPublic, createdAt) VALUES (?,?,?,?,?)",
     [subject, author, content, isPublic ? 1 : 0, createdAt],
-    function (err) {
+    async function (err) {
       if (err) return res.status(500).json({ error: err.message });
+
+      await addXP(author, 10);  // ⭐ HERE
+
       res.json({
         id: this.lastID,
         subject,
@@ -236,6 +239,7 @@ app.post("/notes", (req, res) => {
     }
   );
 });
+
 
 app.delete("/notes/:id", (req, res) => {
   const noteId = req.params.id;
@@ -293,7 +297,7 @@ app.get("/files", (req, res) => {
   );
 });
 
-app.post("/upload", upload.single("file"), (req, res) => {
+app.post("/upload", upload.single("file"), async (req, res) => {
   const { subject, uploader } = req.body;
   if (!req.file) return res.status(400).json({ error: "No file" });
 
@@ -304,8 +308,11 @@ app.post("/upload", upload.single("file"), (req, res) => {
   db.run(
     "INSERT INTO files (subject, originalName, filePath, uploader, uploadedAt) VALUES (?,?,?,?,?)",
     [subject, originalName, filePath, uploader || "Unknown", uploadedAt],
-    function (err) {
+    async function (err) {
       if (err) return res.status(500).json({ error: err.message });
+
+      // ⭐ SAFE: Now we can await here because the outer function is async
+      await addXP(uploader, 20);
 
       res.json({
         id: this.lastID,
@@ -565,7 +572,7 @@ app.get("/questions", (req, res) => {
   });
 });
 
-app.post("/questions", (req, res) => {
+app.post("/questions", async (req, res) => {
   const { subject, text, suggested, createdBy } = req.body;
   if (!subject || !text || !createdBy)
     return res.status(400).json({ error: "Missing fields" });
@@ -575,8 +582,11 @@ app.post("/questions", (req, res) => {
   db.run(
     "INSERT INTO questions (subject, text, suggested, createdBy, createdAt) VALUES (?,?,?,?,?)",
     [subject, text, suggested || "", createdBy, createdAt],
-    function (err) {
+    async function (err) {
       if (err) return res.status(500).json({ error: err.message });
+
+      // ⭐ XP reward works correctly now
+      await addXP(createdBy, 8);
 
       res.json({
         id: this.lastID,
@@ -589,6 +599,7 @@ app.post("/questions", (req, res) => {
     }
   );
 });
+
 
 app.delete("/questions/:id", (req, res) => {
   const qid = req.params.id;
@@ -631,7 +642,7 @@ app.get("/answers", (req, res) => {
   });
 });
 
-app.post("/answers", (req, res) => {
+app.post("/answers", async (req, res) => {
   const { questionId, answerText, answeredBy } = req.body;
 
   if (!questionId || !answerText || !answeredBy)
@@ -642,8 +653,11 @@ app.post("/answers", (req, res) => {
   db.run(
     "INSERT INTO answers (questionId, answerText, answeredBy, createdAt) VALUES (?,?,?,?)",
     [questionId, answerText, answeredBy, createdAt],
-    function (err) {
+    async function (err) {
       if (err) return res.status(500).json({ error: err.message });
+
+      // ⭐ Give XP for answering
+      await addXP(answeredBy, 5);
 
       res.json({
         id: this.lastID,
@@ -655,6 +669,7 @@ app.post("/answers", (req, res) => {
     }
   );
 });
+
 
 
 // ======================================================
