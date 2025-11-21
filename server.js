@@ -344,34 +344,61 @@ app.delete("/files/:id", (req, res) => {
 
 
 // ======================================================
-// XP SYSTEM
+// XP SYSTEM (AUTO-CREATE USER VERSION)
 // ======================================================
+
+// Level formula
 function calculateLevel(xp) {
   return Math.floor(Math.sqrt(xp / 100)) + 1;
 }
 
+// GET XP (auto-create user if not found)
 app.get("/xp", (req, res) => {
   const { username } = req.query;
+
   if (!username) return res.status(400).json({ error: "username required" });
 
   db.get(
-    "SELECT username, xp, level, streak, last_login FROM users WHERE username = ?",
+    "SELECT * FROM users WHERE username = ?",
     [username],
-    (err, user) => {
+    (err, row) => {
       if (err) return res.status(500).json({ error: err.message });
-      if (!user) return res.status(404).json({ error: "User not found" });
 
+      // --- AUTO-CREATE USER HERE ---
+      if (!row) {
+        const createdAt = new Date().toISOString();
+        db.run(
+          "INSERT INTO users (username, password, xp, level, last_login) VALUES (?, ?, ?, ?, ?)",
+          [username, "", 0, 1, createdAt],
+          function (err2) {
+            if (err2) return res.status(500).json({ error: err2.message });
+
+            return res.json({
+              username,
+              xp: 0,
+              level: 1,
+              streak: 0,
+              last_login: createdAt,
+              autoCreated: true
+            });
+          }
+        );
+        return;
+      }
+
+      // Existing user
       res.json({
-        username: user.username,
-        xp: user.xp || 0,
-        level: user.level || 1,
-        streak: user.streak || 0,
-        last_login: user.last_login,
+        username: row.username,
+        xp: row.xp || 0,
+        level: row.level || 1,
+        streak: row.streak || 0,
+        last_login: row.last_login
       });
     }
   );
 });
 
+// ADD XP (auto-create user if needed)
 app.post("/xp/add", (req, res) => {
   const { username, amount } = req.body;
 
@@ -379,27 +406,55 @@ app.post("/xp/add", (req, res) => {
     return res.status(400).json({ error: "username and amount required" });
 
   db.get(
-    "SELECT xp FROM users WHERE username = ?",
+    "SELECT * FROM users WHERE username = ?",
     [username],
-    (err, user) => {
+    (err, row) => {
       if (err) return res.status(500).json({ error: err.message });
-      if (!user) return res.status(404).json({ error: "User not found" });
 
-      const newXP = (user.xp || 0) + Number(amount);
+      // --- AUTO-CREATE USER IF NEEDED ---
+      if (!row) {
+        const createdAt = new Date().toISOString();
+        const startXP = Number(amount);
+        const startLevel = calculateLevel(startXP);
+
+        db.run(
+          "INSERT INTO users (username, xp, level, last_login) VALUES (?, ?, ?, ?)",
+          [username, startXP, startLevel, createdAt],
+          function (err2) {
+            if (err2) return res.status(500).json({ error: err2.message });
+
+            return res.json({
+              username,
+              xp: startXP,
+              level: startLevel,
+              autoCreated: true
+            });
+          }
+        );
+        return;
+      }
+
+      // Existing user → update XP
+      const newXP = (row.xp || 0) + Number(amount);
       const newLevel = calculateLevel(newXP);
 
       db.run(
         "UPDATE users SET xp = ?, level = ? WHERE username = ?",
         [newXP, newLevel, username],
-        (err2) => {
+        function (err2) {
           if (err2) return res.status(500).json({ error: err2.message });
 
-          res.json({ username, xp: newXP, level: newLevel });
+          res.json({
+            username,
+            xp: newXP,
+            level: newLevel
+          });
         }
       );
     }
   );
 });
+
 
 // ======================================================
 // REFLECTIONS (FINAL VERSION)
