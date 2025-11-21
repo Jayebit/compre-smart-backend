@@ -402,58 +402,45 @@ app.get("/xp", (req, res) => {
 app.post("/xp/add", (req, res) => {
   const { username, amount } = req.body;
 
-  if (!username || !amount)
-    return res.status(400).json({ error: "username and amount required" });
-
   db.get(
     "SELECT * FROM users WHERE username = ?",
     [username],
-    (err, row) => {
-      if (err) return res.status(500).json({ error: err.message });
+    (err, user) => {
+      if (err) return res.status(500).json({ error: "DB error" });
 
-      // --- AUTO-CREATE USER IF NEEDED ---
-      if (!row) {
-        const createdAt = new Date().toISOString();
-        const startXP = Number(amount);
-        const startLevel = calculateLevel(startXP);
-
-        db.run(
-          "INSERT INTO users (username, xp, level, last_login) VALUES (?, ?, ?, ?)",
-          [username, startXP, startLevel, createdAt],
-          function (err2) {
-            if (err2) return res.status(500).json({ error: err2.message });
-
-            return res.json({
-              username,
-              xp: startXP,
-              level: startLevel,
-              autoCreated: true
-            });
+      // Auto-create user if not found
+      if (!user) {
+        return db.run(
+          "INSERT INTO users (username, xp, level, streak) VALUES (?, ?, ?, ?)",
+          [username, amount, 1, 0],
+          () => {
+            res.json({ xp: amount, level: 1 });
           }
         );
-        return;
       }
 
-      // Existing user → update XP
-      const newXP = (row.xp || 0) + Number(amount);
-      const newLevel = calculateLevel(newXP);
+      let xp = user.xp + amount;
+      let level = user.level;
+
+      // Level up loop
+      while (xp >= 100) {
+        xp -= 100;   // carry-over XP
+        level++;     // increase level
+      }
 
       db.run(
         "UPDATE users SET xp = ?, level = ? WHERE username = ?",
-        [newXP, newLevel, username],
-        function (err2) {
-          if (err2) return res.status(500).json({ error: err2.message });
+        [xp, level, username],
+        (err2) => {
+          if (err2) return res.status(500).json({ error: "Update error" });
 
-          res.json({
-            username,
-            xp: newXP,
-            level: newLevel
-          });
+          res.json({ username, xp, level });
         }
       );
     }
   );
 });
+
 
 
 // ======================================================
